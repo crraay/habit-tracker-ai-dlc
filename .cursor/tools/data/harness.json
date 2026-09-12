@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "distribution": "cursor",
+  "productName": "Cursor",
+  "configNextStep": "open this project in Cursor, then run `/aidlc --doctor`",
+  "name": "cursor",
+  "harnessDir": ".cursor",
+  "rulesSubdir": "rules",
+  "runnerFrontmatterAdditions": [
+    "disable-model-invocation: true"
+  ],
+  "providers": {
+    "schemaVersion": 1,
+    "provider": "other",
+    "acknowledged": true,
+    "pendingActions": [
+      {
+        "id": "non-bedrock-provider-configuration",
+        "status": "done"
+      }
+    ]
+  }
+}
