@@ -1,0 +1,13 @@
+[
+  {
+    "uuid": "01a0955f-b446-738c-b8bd-de8f1dec87f8",
+    "slug": "timezone-today",
+    "dirName": "260912-timezone-today",
+    "scope": "poc",
+    "status": "complete",
+    "repos": [
+      "habit-tracker-angular",
+      "habit-tracker-springboot"
+    ]
+  }
+]
