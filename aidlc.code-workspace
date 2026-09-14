@@ -1,0 +1,16 @@
+{
+  "folders": [
+    {
+      "path": "."
+    },
+    {
+      "path": "habit-tracker-springboot"
+    },
+    {
+      "path": "habit-tracker-angular"
+    },
+    {
+      "path": "habit-tracker-compose"
+    }
+  ]
+}

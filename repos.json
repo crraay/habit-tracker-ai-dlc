@@ -1,0 +1,20 @@
+{
+  "org": "crraay",
+  "repos": [
+    {
+      "name": "habit-tracker-springboot",
+      "branch": "main",
+      "url": "https://github.com/crraay/habit-tracker-springboot.git"
+    },
+    {
+      "name": "habit-tracker-angular",
+      "branch": "main",
+      "url": "https://github.com/crraay/habit-tracker-angular.git"
+    },
+    {
+      "name": "habit-tracker-compose",
+      "branch": "main",
+      "url": "https://github.com/crraay/habit-tracker-compose.git"
+    }
+  ]
+}

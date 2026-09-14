@@ -85,3 +85,12 @@ aidlc/diagnostics/
 # which was proven to corrupt the multi-line audit blocks) ·
 # aidlc/spaces/*/intents/*/<phase>/<stage>/*.md (artifacts + diary).
 # END AI-DLC:gitignore
+
+# Child code repos are cloned in as siblings, each with its own git + origin.
+# The workspace tracks only the AI-DLC records under aidlc/, not the child source.
+# >>> aidlc workspace-sync managed (do not edit inside; regenerated from repos.json) >>>
+/.aidlc-workspace-sync-recovery-*/
+/habit-tracker-springboot/
+/habit-tracker-angular/
+/habit-tracker-compose/
+# <<< aidlc workspace-sync managed <<<
