@@ -11,6 +11,14 @@
 
 ## Way of Working
 
+- **Windows intent creation**: Cursor’s agent shell on Windows is PowerShell. For
+  `aidlc engine intent create`, pass `--arguments` as a **separate** token with
+  the full user request in double quotes (verbatim). Never use
+  `--arguments='…'` or `--arguments=word rest…` — PowerShell keeps only the first
+  word and truncates `project-description.json`. On Windows the workflow’s printed
+  `intent create` command uses that form; run it as printed, or rewrite any legacy
+  `--arguments='…'` line into `--arguments "full request here"`.
+
 <!-- Project-specific specialisation. Example: -->
 <!-- This monorepo requires package-scoped branch names and a package owner -->
 <!-- review in addition to the team's normal merge policy. -->

@@ -1419,6 +1419,20 @@ function shellArg(value: string): string {
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }
 
+// Space-separated `--flag <value>` survives PowerShell; `--flag='value with spaces'`
+// is parsed as `--flag=make` and drops the rest (truncates project-description.json).
+function shellFlagValue(flag: string, value: string): string {
+  return `--${flag} ${shellQuotedValue(value)}`;
+}
+
+function shellQuotedValue(value: string): string {
+  if (process.platform === "win32") {
+    if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) return `"${value}"`;
+    return `"${value.replace(/`/g, "``").replace(/\$/g, "`$").replace(/"/g, '`"')}"`;
+  }
+  return shellArg(value);
+}
+
 // parked - the terminal directive a parked workflow emits (issue #367). Carries
 // the slug it parked at; the Stop hook treats `parked` as a terminal allow so
 // the conductor can end its turn at a clean inter-stage boundary.
@@ -1770,7 +1784,7 @@ function createPrintDirective(
   let labelHint = "";
   if (description && description.length > 0) {
     // Shell-quote the freeform description so multi-word intents survive intact.
-    cmd.push(`--arguments=${shellArg(description)}`);
+    cmd.push(shellFlagValue("arguments", description));
     // The conductor (LLM) condenses the description into the short dir-name label
     // — the engine can't summarize. Name the missing --label in the directive so
     // the conductor adds it; the dir name becomes `<YYMMDD>-<label>`. (A bare run
