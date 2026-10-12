@@ -1,0 +1,51 @@
+{
+  "stage": "code-generation",
+  "unit": "habit-tracker-springboot",
+  "coverage_note": "FR2 planning-only: traceability to requirements and stories; no application file targets.",
+  "upstream_ids": [
+    "FR2",
+    "FR2.1",
+    "FR3.3",
+    "US1.12",
+    "NFR5.17",
+    "NFR7.26",
+    "BL-INFRA-01"
+  ],
+  "coverage": [
+    {
+      "id": "FR2",
+      "status": "OK",
+      "target": "code-generation-plan.md Boundary — zero repo edits"
+    },
+    {
+      "id": "FR2.1",
+      "status": "OK",
+      "target": "Steps 1–5 record-only; source-manifest empty"
+    },
+    {
+      "id": "FR3.3",
+      "status": "OK",
+      "target": "code-summary.md + bolt-plan F1 reference steps"
+    },
+    {
+      "id": "US1.12",
+      "status": "OK",
+      "target": "Plan traceability table; no merge implication"
+    },
+    {
+      "id": "NFR5.17",
+      "status": "GAP",
+      "target": "Follow-up F1-R5/F1-R6; BL-INFRA-01"
+    },
+    {
+      "id": "NFR7.26",
+      "status": "GAP",
+      "target": "Follow-up F1-R6 CI alignment"
+    },
+    {
+      "id": "BL-INFRA-01",
+      "status": "GAP",
+      "target": "F1-R6 only — not in scope this intent"
+    }
+  ]
+}

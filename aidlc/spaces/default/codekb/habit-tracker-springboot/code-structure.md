@@ -1,54 +1,65 @@
-# Code Structure
+# Code Structure — habit-tracker-springboot
 
-**Repo:** habit-tracker-springboot  
-**Scan kind:** partial — see [reverse-engineering-timestamp.md](./reverse-engineering-timestamp.md)  
-**Components:** [component-inventory.md](./component-inventory.md)
+## Repository Layout
 
-## Package / module organization
+| Path | Role |
+|------|------|
+| `pom.xml` | Maven build, Spring Boot 3.5.5 parent, dependencies |
+| `src/main/java/com/kostya/habittracker/` | All production code (68 sources) |
+| `src/main/resources/application.properties` | Runtime config (DB, JWT, CORS, scheduling) |
+| `src/main/resources/db/migration/` | Flyway V1–V6 |
+| `src/test/java/` | Six test classes |
+| `docs/domain.md` | Canonical domain contract (ahead of code in places) |
+| `Dockerfile` | Multi-stage container build |
+| `.github/workflows/` | CI test, image build, legacy EB deploy |
 
-Single Maven module. Root package `com.kostya.habittracker`. Package-by-layer (not package-by-feature).
+See [technology-stack.md](./technology-stack.md) and [dependencies.md](./dependencies.md).
 
-| Package | Role | This scan |
-|---------|------|-----------|
-| `controller` | REST adapters | Deep |
-| `service` / `service.impl` | Application services | Impl deep; interfaces not separately listed |
-| `entity` | JPA entities | Deep |
-| `repository` | Spring Data | Deep (User, HabitLog, HabitAggregate; other repos present) |
-| `dto` | Request/response shapes | Key files deep; remainder skimmed |
-| `mapper` | Entity ↔ DTO | Skimmed |
-| `config` | Security, seed, scheduling | Deep |
-| `filter` | JWT (and correlation id, skimmed extras) | JwtRequestFilter deep |
-| `security` | Auth entry/denied handlers | Skimmed |
-| `scheduled` | Streak reset job | Deep |
-| `model` | `UserDetails` principal | Deep |
-| `exception` | `GlobalExceptionHandler` + types | Handler deep |
-| `aspect` / `annotation` / `util` | Logging, helpers | Skimmed |
-| `enums` | `UserStatus`, `UserRole` | Skimmed |
+## Package Organization
 
-Resources: `src/main/resources/application.properties` (deep), `application-dev.properties` and `logback-spring.xml` (skimmed), Flyway `src/main/resources/db/migration/` V1–V5 (deep). Tests: `src/test/java/.../HabittrackerApplicationTests.java` and `src/test/resources/application-test.properties`.
+```
+com.kostya.habittracker
+├── HabittrackerApplication.java
+├── controller/          # 6 REST controllers
+├── service/ + service.impl/   # 7 interfaces, 8 implementations
+├── repository/          # 5 Spring Data JPA repos
+├── entity/              # User, Habit, HabitLog, HabitAggregate, HabitIcon, BasicAudit
+├── dto/                 # Request/response records or classes
+├── mapper/              # 5 manual mappers
+├── config/              # Security, JPA, OpenAPI, scheduling, clock, DataInitializer
+├── filter/              # JwtRequestFilter, correlation id
+├── security/            # Auth entry/denied handlers
+├── exception/           # Domain exceptions + GlobalExceptionHandler
+├── scheduled/           # StreakResetScheduler
+├── aspect/              # @LogExecution AOP
+├── util/                # JwtUtil
+├── enums/               # UserStatus, UserRole
+└── model/               # UserDetails wrapper
+```
 
-## File classification (intent-relevant)
+## Layering Conventions
 
-| Class | Path | Note |
-|-------|------|------|
-| Domain law | `docs/domain.md` | User clock + today; timezone change does not rewrite check-in dates |
-| User persistence | `entity/User.java`, `repository/UserRepository.java` | No timezone field; repo is `save` + `findByUsername` |
-| Check-in persistence | `entity/HabitLog.java`, `V1__init_schema.sql` | `date DATE` unique with `habit_id` |
-| Check-in API | `controller/HabitTrackController.java`, `dto/HabitTrackRequest.java` | Client `LocalDate` + `@PastOrPresent` |
-| Auth API | `controller/AuthController.java`, `dto/LoginResponse.java` | Token + expiry only |
-| Seed | `config/DataInitializer.java` | `testuser` with no zone |
-| Ops clock | `scheduled/StreakResetScheduler.java`, `config/SchedulingConfig.java` | `app.scheduling.timezone` |
-| Errors | `exception/GlobalExceptionHandler.java` | `BadRequestException` → 400 |
+- **Controllers** — `@RestController`, OpenAPI tags, delegate to services; some use field `@Autowired`, others constructor injection (`@RequiredArgsConstructor` inconsistency).
+- **Services** — `@Transactional` boundaries; user id from `Authentication` / principal.
+- **Repositories** — Spring Data interfaces; custom queries for aggregates and streak reset.
+- **Mappers** — Static or component mappers entity ↔ DTO (no code generation).
 
-## Code patterns
+## Configuration & Cross-Cutting
 
-- Controller → service interface → `*ServiceImpl` → repository + mapper.
-- Lombok on entities/DTOs; constructor injection on newer services (`HabitTrackServiceImpl`), field `@Autowired` on several controllers and the scheduler.
-- Owner scoping via `findByIdAndUserId` / `findAllByUserId` on habits.
-- Check-in uniqueness: DB unique `(habit_id, date)` plus service-level conflict if a log already exists.
-- Audit superclass `BasicAudit` on entities.
-- Stateless JWT: filter before `UsernamePasswordAuthenticationFilter`.
+- **Security**: `WebSecurityConfig` — stateless session, JWT filter order, CORS from env, permit actuator/swagger/auth login.
+- **Persistence**: JPA with `ddl-auto=validate`; entities use Lombok and `BasicAudit` where applicable.
+- **Observability**: Actuator health; correlation-id filter for request tracing.
+- **Dev seed**: `DataInitializer` ensures `testuser` exists on startup.
 
-## Patterns vs intent
+## Database Evolution
 
-No user-clock type, validator, or controller. Adding timezone should stay on **User Identity** (column + repository persist) and a new authenticated resource, not on **Scheduling**. Check-in code should keep storing `HabitLog.date` as the local date the client (later, the window) supplies — not convert through the new zone.
+Flyway migrations define users, habits, logs, aggregates, icons, and user timezone (V6). Schema is the integration point for all services ([architecture.md](./architecture.md)).
+
+## Test Layout
+
+Tests mirror main package under `src/test/java/com/kostya/habittracker/` with `application-test.properties` (H2). Coverage concentrates on user clock/timezone; habit and streak paths largely untested ([code-quality-assessment.md](./code-quality-assessment.md)).
+
+## Agent / Docs Conventions
+
+- `AGENTS.md`, `README.md`, `DOCKER.md` — human and agent onboarding.
+- `.cursor/rules/habit-domain.mdc` — points agents to `docs/domain.md`.

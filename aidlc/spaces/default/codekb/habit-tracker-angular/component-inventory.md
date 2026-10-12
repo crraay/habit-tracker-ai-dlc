@@ -1,65 +1,140 @@
 # Component Inventory — habit-tracker-angular
 
-Logical UI/client blocks from this run. Headings below are the `analyzed.components` / inventory names. Health: **healthy** / **at-risk** / **skimmed**. Paths: [reverse-engineering-timestamp.md](./reverse-engineering-timestamp.md). HTTP verbs: [api-documentation.md](./api-documentation.md).
+Logical UI/client blocks from full-repo scan. Health: **healthy** / **at-risk** / **skimmed**. Paths: [reverse-engineering-timestamp.md](./reverse-engineering-timestamp.md). HTTP: [api-documentation.md](./api-documentation.md).
+
+```yaml
+components:
+  - id: app-shell
+    name: App Shell
+    health: healthy
+    paths:
+      - src/app/app.routes.ts
+      - src/app/app.config.ts
+      - src/app/app.component.ts
+      - src/app/components/app-container/
+  - id: authentication
+    name: Authentication
+    health: at-risk
+    paths:
+      - src/app/components/login/
+      - src/app/store/auth.store.ts
+      - src/app/guards/
+      - src/app/interceptors/
+  - id: user-clock
+    name: User Clock
+    health: healthy
+    paths:
+      - src/app/store/user-clock.store.ts
+      - src/app/components/settings/
+  - id: track-habits
+    name: Track Habits
+    health: at-risk
+    paths:
+      - src/app/components/track-habits/
+      - src/app/components/track-habit-item/
+  - id: statistics
+    name: Statistics
+    health: healthy
+    paths:
+      - src/app/components/statistics/
+      - src/app/components/stat-habit-item/
+  - id: habit-management-ui
+    name: Habit Management UI
+    health: healthy
+    paths:
+      - src/app/components/edit-habits/
+      - src/app/components/edit-habit-item/
+      - src/app/components/icon-picker/
+  - id: shared-presentation
+    name: Shared Presentation Widgets
+    health: at-risk
+    paths:
+      - src/app/components/datepicker/
+      - src/app/components/separator/
+      - src/app/components/streak/
+      - src/app/components/counter/
+      - src/app/components/confirm-dialog/
+      - src/app/services/
+      - src/app/animations/
+  - id: generated-web-api-client
+    name: Generated Web API Client
+    health: healthy
+    paths:
+      - src/app/web-api/
+      - swagger/
+  - id: build-and-delivery
+    name: Build and Delivery
+    health: healthy
+    paths:
+      - package.json
+      - angular.json
+      - environments/
+      - proxy.conf.json
+      - Dockerfile
+      - nginx.conf
+      - .github/workflows/build-and-test.yml
+```
 
 | Component | Health | Owns |
 |-----------|--------|------|
-| App Shell | at-risk | Routes, authenticated chrome; no settings |
-| Authentication | at-risk | Login, Elf session, guards, interceptors |
-| Track Habits | at-risk | List + check-in using client-clock today |
-| Statistics | at-risk | Range default/max using client-clock today |
-| Datepicker | at-risk | Shared calendar; options set once |
-| Generated Web API Client | at-risk | OpenAPI adapters; no today/timezone ops |
-| Build and Delivery | healthy | npm/Angular CLI, env, proxy, CI |
-| Habit Management UI | skimmed | Edit habits CRUD |
-| Shared Presentation Widgets | skimmed | Streak, counter, dialogs, etc. |
+| App Shell | healthy | Routes, authenticated chrome, Settings nav |
+| Authentication | at-risk | Login, Elf JWT session, guards, interceptors (401 logout TODO) |
+| User Clock | healthy | In-memory `/api/me` cache, timezone settings UX |
+| Track Habits | at-risk | Daily list/check-in; server today; no minDate; filter TODO-pipe |
+| Statistics | healthy | Month-to-today range from server clock |
+| Settings | healthy | IANA timezone edit, API error display |
+| Habit Management UI | healthy | Habit CRUD, icon picker |
+| Shared Presentation Widgets | at-risk | Datepicker (one-shot init), dialogs, animations (possible dead files) |
+| Generated Web API Client | healthy | OpenAPI adapters (6 services, 13 operations) |
+| Build and Delivery | healthy | npm/Angular CLI, env, proxy, Docker/nginx, CI test/build |
 
 ## App Shell
 
-- **Responsibility**: `app.routes.ts`, `app.config.ts`, `AppContainerComponent`. Default redirect `/` → `track`. Nav: Track / Edit / Statistics / Logout.
-- **Depends on**: Authentication (child `authGuard`), feature screens.
-- **Intent**: No settings route or IANA field. Settings is greenfield chrome here.
+- **Responsibility**: `app.routes.ts` (login, track, edit, statistics, **settings**), `app.config.ts` (router, HttpClient + interceptors, `ApiModule.forRoot`), `AppContainerComponent` nav + logout.
+- **Depends on**: Authentication guards; feature routes.
+- **Notes**: Default landing `track`. Mobile/desktop nav includes Settings.
 
 ## Authentication
 
-- **Responsibility**: `LoginComponent`, `auth.store.ts` (Elf persist `ht_auth`), `auth.guard.ts`, `token.interceptor.ts`, `refresh-token.interceptor.ts`, `AuthService`.
-- **Depends on**: Generated Web API Client (`POST /api/auth/login`).
-- **Intent**: Session has no timezone/today. Login `subscribe()` is success-only. Refresh interceptor is logout-on-401 (TODO), not a date concern. Invalid-save UX has no precursor here.
+- **Responsibility**: `LoginComponent`, `AuthStore` (Elf + `localStorage` `ht_auth`), `authGuard` / `noAuthGuard`, `tokenInterceptor`, `refreshTokenInterceptor`, `AuthService`.
+- **Depends on**: Generated client `POST /api/auth/login`.
+- **Risks**: Login subscribe success-only; refresh interceptor TODO; `AuthProps` types vs null initial state.
+
+## User Clock
+
+- **Responsibility**: `UserClockStore` — lazy `GET /api/me`, `applyTimezoneUpdate`, `clear()` on logout; `SettingsComponent` — IANA select (`Intl.supportedValuesOf`), `PUT /api/me`, error message binding.
+- **Depends on**: `UserClockService` (generated).
+- **Notes**: Clock not persisted; timezone change does not refetch `today` in-session (tests assert this behaviour).
 
 ## Track Habits
 
-- **Responsibility**: `TrackHabitsComponent`, `TrackHabitItemComponent`. Seeds `currentDate` / `selectedDate` with `new Date()` (L49–50). Lists via `getTrackingList({ date: format(selectedDate, 'yyyy-MM-dd') })` (L57–59). Check-in/unmark `handleStatusChange` (L66–78) posts that formatted date.
-- **Depends on**: Datepicker (`maxDate` = client `currentDate`), Generated Web API Client (`HabitTrackService`).
-- **Intent**: Primary blast radius. Must consume API today for default, max, and payload. Success-only subscribe.
+- **Responsibility**: `TrackHabitsComponent` loads clock then list; `handleStatusChange` POST/DELETE track; `TrackHabitItemComponent` row UI; template filter via `applyFilterByStatus` (TODO pipe); hardcoded `"TODO"` separator label in HTML.
+- **Depends on**: User Clock, Datepicker, `HabitTrackService`.
+- **Risks**: No track `minDate`; success-only HTTP on check-in; OnPush + method-in-template filter.
 
 ## Statistics
 
-- **Responsibility**: `StatisticsComponent`. `currentDate = new Date()` (L24); ctor `startOfMonth(this.currentDate)` / `endDate = this.currentDate` (L36–37); `GET /api/statistics/{startDate}/{endDate}` with local `yyyy-MM-dd` (L44–49).
-- **Depends on**: Datepicker (end picker max = client today), Generated Web API Client (`HabitStatisticsService`).
-- **Intent**: Same shared clock source as Track. Unused helpers (`endOfMonth`, `add`, `onPeriodChange`) are leftover, not a 7/30 feature.
-
-## Datepicker
-
-- **Responsibility**: `DatepickerComponent` wrapping `air-datepicker`. Used by Track and Statistics.
-- **Depends on**: Caller-supplied `Date` max/today.
-- **Intent**: Options applied once in `ngAfterViewInit`. Swapping API today later will not update the widget without re-init or option update.
-
-## Generated Web API Client
-
-- **Responsibility**: `src/app/web-api/` (`services.ts`, per-tag services, `fn/`, `models/`, `api-configuration.ts`) generated from `swagger/api-docs.json` + `swagger/config.json`.
-- **Depends on**: `HttpClient`, `environment.apiUrl`.
-- **Intent**: No today/timezone operations in the snapshot. `ErrorResponse` generated but unused. Settings/today work implies new OpenAPI tag + regenerate — do not hand-edit generated files.
-
-## Build and Delivery
-
-- **Responsibility**: `package.json`, `angular.json`, `environments/`, `proxy.conf.json`, `.github/workflows/build-and-test.yml`, `README.md`.
-- **Depends on**: npm, Angular CLI application builder.
-- **Intent**: README already states the UI must not invent *today*. CI is `npm install` / `build` / `test:ci`. Deploy/image workflows were skimmed.
+- **Responsibility**: `StatisticsComponent` — range from server `today`, `getAggregatedData`; `StatHabitItemComponent` rows; date pickers for range.
+- **Depends on**: User Clock, Datepicker, `HabitStatisticsService`.
 
 ## Habit Management UI
 
-Skimmed: `edit-habits/`, `edit-habit-item/`, habit-mgmt and habit-icons client fns. Habit CRUD only. Out of this intent’s change set.
+- **Responsibility**: `EditHabitsComponent`, `EditHabitItemComponent`, `IconPickerComponent`; habit-mgmt + habit-icons API calls.
+- **Depends on**: `HabitMgmtService`, `HabitIconsService`, confirm dialog for deletes.
+- **Notes**: `edit-habit-item` has commented debugger and TODO name-length validation.
 
 ## Shared Presentation Widgets
 
-Skimmed: `icon-picker/`, `stat-habit-item/`, `streak/`, `counter/`, `separator/`, `confirm-dialog/`, `src/app/services/`, `src/app/animations/`. No IANA or today ownership found at directory granularity.
+- **Responsibility**: `DatepickerComponent` (air-datepicker wrapper), `SeparatorComponent`, streak/counter widgets, `@ngneat/dialog` confirm service, animation triggers under `animations/triggers/`.
+- **Depends on**: Callers for min/max/value dates.
+- **Risks**: Datepicker options set once in `ngAfterViewInit`; legacy animation files may be unused.
+
+## Generated Web API Client
+
+- **Responsibility**: `src/app/web-api/` from `swagger/api-docs.json`; tags: auth, habit-mgmt, habit-track, habit-statistics, habit-icons, **user-clock** (`UserClockService`).
+- **Depends on**: `HttpClient`, `environment.apiUrl`, path alias `@webapi/*`.
+
+## Build and Delivery
+
+- **Responsibility**: Angular application builder (`production`, `dev`, `local` configs); dev proxy; Docker `ng build --configuration=production`; nginx `/api/` → backend; reusable CI workflow.
+- **Depends on**: npm, Node in CI; sibling backend at runtime.

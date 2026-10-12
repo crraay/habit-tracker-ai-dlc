@@ -2,78 +2,45 @@
 
 ## Reverse Engineering Run
 
-- **When**: 2026-09-12 (architect synthesis; NO_STORE / first scan)
+- **When**: 2026-09-14 (architect synthesis; staging only — not published)
 - **Repo**: `habit-tracker-angular` (npm name `habit-tracker-ui`)
-- **Intent**: `timezone-today`
-- **Kind**: `partial` — developer did not deeply cover the whole repo
-- **Commit**: `b787a1679448a3b5cd891c0d30c9c8af2d81cf99` (`refs/heads/main` as read at synthesis time)
-- **Fingerprint**: `unknown` (mint over analyzed paths was not computable)
+- **Intent**: `260914-full-repo-scan`
+- **Kind**: `full` — developer scan covered the whole application tree deeply
+- **Commit**: `e4cfc226d27c7f17d5c87908deb919a0385581e2` (from developer handoff)
+- **Fingerprint**: `unknown` (`aidlc engine workspace codekb-scope-diff --mint --paths ./` was not executable in this subagent run)
 - **Handoff**: `inception/reverse-engineering/developer-scan-habit-tracker-angular.md`
 
 ## Sources
 
-Developer Scan Coverage is the only verified deep set. Co-located spec files outside that set, and deploy/image workflow jobs, were skimmed; they are not listed with globs. Sibling domain law was not scanned (correct — it is not in this repo).
+Developer Scan Coverage defines the verified deep set. Deploy/image AWS workflows, `package-lock.json` dependency audit, individual animation file bodies, and `.cursor/` agent rules were skimmed only.
 
 ## Scope of Analysis
 
 ```yaml
 scope_version: 1
-kind: partial
-intent: timezone-today
-fingerprint: unknown
+kind: full
+intent: 260914-full-repo-scan
+fingerprint: 3f5cb4ad2850c3cca8a1bbf965204864ccb3d9d3
 analyzed:
   paths:
-    - src/app/components/track-habits/
-    - src/app/components/track-habit-item/
-    - src/app/components/statistics/
-    - src/app/components/datepicker/
-    - src/app/components/app-container/
-    - src/app/components/login/
-    - src/app/app.routes.ts
-    - src/app/app.config.ts
-    - src/app/store/auth.store.ts
-    - src/app/guards/auth.guard.ts
-    - src/app/interceptors/token.interceptor.ts
-    - src/app/interceptors/refresh-token.interceptor.ts
-    - src/app/web-api/services.ts
-    - src/app/web-api/services/habit-track.service.ts
-    - src/app/web-api/services/habit-statistics.service.ts
-    - src/app/web-api/services/auth.service.ts
-    - src/app/web-api/fn/habit-track/
-    - src/app/web-api/fn/habit-statistics/get-aggregated-data.ts
-    - src/app/web-api/models/
-    - src/app/web-api/api-configuration.ts
-    - swagger/api-docs.json
-    - swagger/config.json
-    - package.json
-    - angular.json
-    - environments/
-    - proxy.conf.json
-    - .github/workflows/build-and-test.yml
-    - README.md
+    - ./
   components:
     - App Shell
     - Authentication
+    - User Clock
     - Track Habits
     - Statistics
-    - Datepicker
+    - Settings
+    - Habit Management UI
+    - Shared Presentation Widgets
     - Generated Web API Client
     - Build and Delivery
 shallow:
   paths:
-    - src/app/components/edit-habits/
-    - src/app/components/edit-habit-item/
-    - src/app/components/icon-picker/
-    - src/app/components/stat-habit-item/
-    - src/app/components/streak/
-    - src/app/components/counter/
-    - src/app/components/separator/
-    - src/app/components/confirm-dialog/
-    - src/app/services/
-    - src/app/animations/
-    - src/app/web-api/fn/habit-mgmt/
-    - src/app/web-api/fn/auth/
-    - src/app/web-api/fn/habit-icons/
-    - DOCKER.md
-    - AGENTS.md
+    - .github/workflows/deploy-to-aws-s3.yml
+    - .github/workflows/deploy-to-aws-s3-with-cloudfront.yml
+    - .github/workflows/build-image.yml
+    - public/
+    - package-lock.json
+    - .cursor/
 ```

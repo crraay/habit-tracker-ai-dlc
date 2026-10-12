@@ -1,29 +1,50 @@
 # Business Overview — habit-tracker-angular
 
-Focused first scan (`kind: partial`) for intent `timezone-today`. This repo is the Habit Tracker **UI only**. Canonical habit law lives in sibling `habit-tracker-springboot/docs/domain.md`. This overview records what the SPA does today; it does not invent check-in windows, streaks, pause/archive, or the meaning of *today*.
+Full-repo reverse engineering for intent `260914-full-repo-scan`. This repo is the Habit Tracker **web UI only**. Canonical habit domain rules live in sibling `habit-tracker-springboot/docs/domain.md` (referenced by README and AGENTS.md). This document describes what the SPA delivers to users and how it defers enforcement to the API.
 
 ## Purpose
 
-`habit-tracker-ui` is an Angular 18 SPA that lets an authenticated user track daily habits, edit the habit list, and view a date-range statistics screen. It talks to the Spring Boot API through a generated OpenAPI client. The UI may hide illegal actions; it must not become a second source of truth.
+`habit-tracker-ui` is an Angular 18 single-page application that lets an authenticated user:
+
+- Sign in and maintain a JWT session across browser refresh
+- View and check in daily habits for a chosen calendar date (defaulting to the server’s **today**)
+- Create, edit, and delete habits and pick icons
+- View habit completion statistics for a date range (default: start of month through **today**)
+- View and change their IANA **timezone** (server validates; UI shows API errors on invalid saves)
+
+The UI may hide or discourage illegal actions; it must not become a second source of truth for calendar boundaries, check-in windows, streaks, or habit lifecycle (pause/archive).
 
 ## Key Functionality
 
-| Area | What the UI does now | Intent relevance |
+| Area | User-facing behaviour | Backend reliance |
 |------|----------------------|------------------|
-| Login | Username/password → JWT in Elf store (`ht_auth` in `localStorage`) | Session holds `username` / `token` / `tokenExpiresIn` only — no timezone, no API today |
-| Track | Lists habits for a date; check-in / unmark via `POST`/`DELETE /api/habit-track` | Default date, datepicker `maxDate`, and check-in payload all come from `new Date()` + local `yyyy-MM-dd` |
-| Statistics | Aggregates for a start/end range via `GET /api/statistics/{startDate}/{endDate}` | Range default and end-picker max are the same client clock |
-| Edit | Habit CRUD (skimmed) | Out of this intent’s change set |
-| Settings | **Absent** — no route, nav item, or IANA field | Greenfield for view/change timezone and invalid-save errors |
+| Login | Username/password → JWT stored locally | `POST /api/auth/login` |
+| Track | Habit list for a date; toggle done/undone | `GET /api/habit-track/{date}`, `POST`/`DELETE /api/habit-track` |
+| Edit habits | CRUD habit list, icons | `/api/habit`, `/api/habit-icons` |
+| Statistics | Aggregated completion for start–end range | `GET /api/statistics/{startDate}/{endDate}` |
+| Settings | Timezone dropdown (IANA list when supported) | `GET`/`PUT /api/me` |
+| Session clock | Default dates and max calendar day | `GET /api/me` → `today`, `timezone` |
 
-Shell navigation after login is Track / Edit / Statistics / Logout only. See [component-inventory.md](./component-inventory.md) for owners and [api-documentation.md](./api-documentation.md) for the consumed contract.
+Navigation after login: **Track habits**, **Edit habits**, **Statistics**, **Settings**, **Logout** (desktop top nav; mobile bottom icons).
 
 ## Domain Boundary
 
-- **This package owns**: presentation, routing, client-side session, HTTP adapters, date widgets.
-- **This package does not own**: what *today* is, timezone validity, check-in window, streak math, pause/archive/delete semantics.
-- **Observed mismatch (intent 14)**: track, statistics, and check-in treat the **browser clock** as domain today. The checked-in OpenAPI snapshot has no `/today` or timezone operation, so the UI cannot yet consume API today.
+| Owned in this package | Not owned (backend / domain doc) |
+|----------------------|----------------------------------|
+| Presentation, routing, forms | Definition of *today* and valid IANA zones |
+| JWT session persistence | Check-in window enforcement |
+| HTTP adapters (generated) | Streak calculation, pause/archive semantics |
+| Date formatting as `yyyy-MM-dd` for API params | Whether a habit may be tracked on a given date |
+| Timezone **display and edit** UX | Habit state machine beyond DTO fields exposed in OpenAPI |
 
-## Out of Scope for This Intent
+## Observed Gaps (documented, not fixed in this scan)
 
-Do not expand this package into check-in window enforcement, streak, pause/archive, statistics 7/30 presets, or the `status` → `done` rename on `HabitTrackResponse`. Those stay backend-contract follow-ups.
+- Track screen allows picking dates with no client `minDate`; out-of-window actions may fail at API.
+- OpenAPI `HabitDto` may be minimal vs full domain model (pause/archive/state).
+- No refresh-token flow; expired JWT forces re-login.
+- Login and track mutations lack user-visible error handling (Settings is the reference pattern).
+
+## Relationship to Sibling Repos
+
+- **habit-tracker-springboot**: API and domain law.
+- **habit-tracker-compose**: Docker/nginx wiring described in DOCKER.md; not built in this repo’s CI beyond image workflow (skimmed).

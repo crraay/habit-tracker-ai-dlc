@@ -1,0 +1,39 @@
+{
+  "stage": "code-generation",
+  "unit": "habit-tracker-compose",
+  "coverage_note": "FR2 planning-only: traceability to requirements; no compose repo file targets.",
+  "upstream_ids": [
+    "FR2",
+    "FR2.1",
+    "FR3.3",
+    "NFR2.1",
+    "NFR3.1"
+  ],
+  "coverage": [
+    {
+      "id": "FR2",
+      "status": "OK",
+      "target": "code-generation-plan.md Boundary — zero repo edits"
+    },
+    {
+      "id": "FR2.1",
+      "status": "OK",
+      "target": "Steps 1–5 record-only; source-manifest empty writes"
+    },
+    {
+      "id": "FR3.3",
+      "status": "OK",
+      "target": "code-summary.md + bolt-plan F3 reference steps"
+    },
+    {
+      "id": "NFR2.1",
+      "status": "OK",
+      "target": "Planning boundary in plan; no merge this intent"
+    },
+    {
+      "id": "NFR3.1",
+      "status": "GAP",
+      "target": "Follow-up F3 deploy hardening"
+    }
+  ]
+}

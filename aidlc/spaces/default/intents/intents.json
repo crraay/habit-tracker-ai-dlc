@@ -9,5 +9,17 @@
       "habit-tracker-angular",
       "habit-tracker-springboot"
     ]
+  },
+  {
+    "uuid": "01a09de9-3535-7125-bca7-ff6186a3f71f",
+    "slug": "full-repo-scan",
+    "dirName": "260914-full-repo-scan",
+    "scope": "classic",
+    "repos": [
+      "habit-tracker-angular",
+      "habit-tracker-compose",
+      "habit-tracker-springboot"
+    ],
+    "status": "complete"
   }
 ]

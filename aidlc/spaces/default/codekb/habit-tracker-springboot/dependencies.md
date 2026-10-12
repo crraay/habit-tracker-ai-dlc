@@ -1,51 +1,63 @@
-# Dependencies
+# Dependencies — habit-tracker-springboot
 
-**Repo:** habit-tracker-springboot  
-**Scan kind:** partial — this file is the dependency inventory. Stack versions: [technology-stack.md](./technology-stack.md). Components: [component-inventory.md](./component-inventory.md).
+## External Runtime Dependencies
 
-## Build
+Managed primarily via Spring Boot 3.5.5 BOM unless pinned in `pom.xml`.
 
-Single module. Parent `org.springframework.boot:spring-boot-starter-parent:3.5.5`. No reactor inter-module edges.
+| Dependency | Version (declared) | Role |
+|------------|-------------------|------|
+| spring-boot-starter-web | BOM | REST API |
+| spring-boot-starter-data-jpa | BOM | ORM + repositories |
+| spring-boot-starter-security | BOM | Authentication/authorization |
+| spring-boot-starter-validation | BOM | DTO validation |
+| spring-boot-starter-actuator | BOM | Health checks |
+| postgresql (runtime) | BOM | Production DB driver |
+| flyway-core | 11.10.3 | Schema migrations |
+| lombok | BOM | Compile-time codegen |
+| springdoc-openapi-starter-webmvc-ui | 2.8.9 | API docs UI |
+| jjwt-api / jjwt-impl / jjwt-jackson | 0.12.6 | JWT |
 
-## External (from `pom.xml`)
+## Test Dependencies
 
-| Coordinate | Scope | Used for |
-|------------|-------|----------|
-| `spring-boot-starter-actuator` | compile | Health |
-| `spring-boot-starter-web` | compile | REST |
-| `spring-boot-starter-validation` | compile | Bean Validation (`@PastOrPresent` on track date) |
-| `spring-boot-starter-data-jpa` | compile | Entities / repos |
-| `spring-boot-starter-security` | compile | Filter chain |
-| `org.postgresql:postgresql` | runtime | Production DB |
-| `org.projectlombok:lombok` | provided | Boilerplate |
-| `org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9` | compile | Swagger |
-| `io.jsonwebtoken:jjwt:0.12.6` | compile | JWT |
-| `org.flywaydb:flyway-core:11.10.3` | compile | Migrations |
-| `org.flywaydb:flyway-database-postgresql:11.10.3` | compile | PG support |
-| `spring-boot-starter-test` | test | JUnit / Mockito / Spring Test |
-| `spring-security-test` | test | Security test helpers |
-| `com.h2database:h2` | test | In-memory DB |
+| Dependency | Scope | Role |
+|------------|-------|------|
+| spring-boot-starter-test | test | JUnit 5, AssertJ, MockMvc |
+| spring-security-test | test | Security MockMvc helpers |
+| h2 | test | In-memory database |
 
-Runtime env (not Maven): `JWT_SECRET`, `CORS_ALLOWED_ORIGINS`, datasource URL/user/password, optional `SCHEDULING_TIMEZONE`.
+## Build Plugins
 
-## Internal edges (issue 14 blast radius)
+| Plugin | Role |
+|--------|------|
+| spring-boot-maven-plugin | Executable JAR |
+| flyway-maven-plugin | 11.10.3 — optional CLI migrations |
+| maven-compiler-plugin | Java 17 |
+
+No internal Maven modules; dependency graph is flat single artifact.
+
+## Internal Package Dependencies (logical)
 
 ```
-Security Filter Chain → Auth, all JWT controllers
-Auth → User Identity
-User Identity → Persistence Schema
-Check-in → Habit Catalog → User Identity
-Check-in → Habit Aggregate → Persistence Schema
-Scheduling → Habit Aggregate
-Statistics → Habit Aggregate (out of package)
-Habit Icons → Persistence Schema (out of package)
+REST API Adapters
+  → Authentication Services | Habit Management Service | Check-in Tracking Service
+    | Statistics Service | User Clock Service | Habit Icon Service
+  → all use Persistence Layer + Domain Entities
+Streak and Aggregate Service ← Check-in Tracking Service, Scheduled Jobs
+Security and JWT ← all protected adapters
+Infrastructure Configuration ← cross-cutting (security, JPA, clock, seed)
 ```
 
-Timezone work should touch **User Identity**, **Persistence Schema**, **Security Filter Chain** (new route only), and a new controller/service. It must **not** add an edge from User Identity to Scheduling, and must **not** add a write from User Identity to Check-in / `habit_log`.
+See [component-inventory.md](./component-inventory.md) for component names and [code-structure.md](./code-structure.md) for package map.
 
-`UserRepository` today cannot express timezone without a new field and persist usage (seed + update). `HabitLogRepository` stays read/write of dates as stored.
+## External Services
 
-## Sibling systems (context, not this JAR)
+| Service | Coupling |
+|---------|----------|
+| PostgreSQL | Required at runtime; connection pool via Hikari (Boot default) |
+| Docker Hub | CI publishes image `crraay/habit-tracker-springboot:latest` |
 
-- habit-tracker-angular — API consumer; needs server `today`.
-- habit-tracker-compose — deploy/orchestration; not scanned here.
+No message brokers, third-party auth, or object storage in this repo.
+
+## Configuration Dependencies
+
+Application requires valid datasource, `JWT_SECRET`, and `CORS_ALLOWED_ORIGINS` for typical client deployments. Defaults in `application.properties` include local DB password placeholder — not suitable for production without override ([code-quality-assessment.md](./code-quality-assessment.md)).

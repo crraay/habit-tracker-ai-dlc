@@ -1,20 +1,22 @@
 # Architecture — habit-tracker-angular
 
-Synthesis of the developer scan for intent `timezone-today`. Component catalogue: [component-inventory.md](./component-inventory.md). Consumed HTTP surface: [api-documentation.md](./api-documentation.md).
+Synthesis of the full-repo developer scan (commit `e4cfc226`). Component catalogue: [component-inventory.md](./component-inventory.md). Consumed HTTP surface: [api-documentation.md](./api-documentation.md).
 
 ## Architecture Analysis
 
 ### System Overview
 
-A single-page Angular 18 application (`habit-tracker-ui`) in front of a sibling Spring Boot API. The browser hosts routing, forms, and an Elf-backed JWT session. All habit data crosses HTTP via `ng-openapi-gen` adapters under `src/app/web-api/`. There is no client-side domain service for *today*; constructors seed dates from `new Date()`.
+A single-page **Angular 18 standalone SPA** (`habit-tracker-ui`) in front of a sibling **Spring Boot** API (system of record). The browser hosts routing, forms, Elf-backed JWT persistence, and an in-memory **User Clock** cache. All habit and profile data crosses HTTP through **ng-openapi-gen** adapters under `src/app/web-api/`. Domain law (check-in window, streak, pause/archive) is not re-implemented in the UI; AGENTS.md and README defer to `habit-tracker-springboot/docs/domain.md`.
+
+**Server-authoritative today**: Track and Statistics seed dates from `UserClockStore.getClock()` → `GET /api/me` (`today` as ISO `yyyy-MM-dd`, `timezone` as IANA). Settings updates timezone via `PUT /api/me` and applies `UserClockStore.applyTimezoneUpdate()` (FR3.3: in-session `today` is preserved; only timezone is replaced).
 
 ### Architectural Style
 
-**Layered SPA (modular monolith frontend)** — one deployable, one npm package, standalone components (`ht` prefix), generated HTTP port.
+**Layered SPA (modular monolith frontend)** — one npm package, one deployable static bundle (nginx in Docker), standalone components (`ht` prefix), functional HTTP interceptors, route guards.
 
-Evidence: `angular.json` application builder; no workspace-internal libraries; `environment.apiUrl` + `proxy.conf.json` for `/api` → `localhost:8080`.
+Evidence: `bootstrapApplication` + `provideRouter` + `provideHttpClient(withInterceptors(...))` in `app.config.ts`; no internal libraries; `environment.apiUrl` empty string with same-origin `/api` (dev proxy or production nginx → backend).
 
-Context mapping to the backend is **Conformist / Published Language**: the UI must adopt the API model. Domain law is not implemented here. An Anti-Corruption Layer for calendar *today* does not exist; `date-fns` `format(..., 'yyyy-MM-dd')` on a browser `Date` is used as if it were the server’s civil date.
+Context mapping to the backend is **Conformist / Published Language**: DTOs and paths come from checked-in OpenAPI. The **User Clock** component is a thin **ACL** for session-scoped caching of `/api/me`, not a second calendar authority.
 
 ### Component Relationships
 
@@ -26,9 +28,13 @@ flowchart LR
   end
   subgraph auth [Authentication]
     Login[Login]
-    Store[AuthStore]
-    Guards[AuthGuards]
-    Interceptors[HTTP interceptors]
+    AuthStore[AuthStore Elf]
+    Guards[authGuard]
+    Interceptors[token + refresh interceptors]
+  end
+  subgraph clock [User Clock]
+    ClockStore[UserClockStore]
+    Settings[Settings]
   end
   subgraph track [Track Habits]
     TrackUI[TrackHabits]
@@ -38,116 +44,153 @@ flowchart LR
   subgraph stats [Statistics]
     StatsUI[Statistics]
   end
+  subgraph mgmt [Habit Management UI]
+    Edit[EditHabits]
+  end
   subgraph client [Generated Web API Client]
+    MeSvc[UserClockService]
     TrackSvc[HabitTrackService]
     StatsSvc[HabitStatisticsService]
+    MgmtSvc[HabitMgmtService]
     AuthSvc[AuthService]
   end
-  Clock[Browser clock]
   API[Spring Boot API]
 
   Routes --> Container
   Routes --> Login
   Routes --> TrackUI
   Routes --> StatsUI
+  Routes --> Settings
+  Routes --> Edit
   Login --> AuthSvc
-  AuthSvc --> Store
-  Guards --> Store
-  Interceptors --> Store
-  TrackUI --> Clock
-  StatsUI --> Clock
+  AuthSvc --> AuthStore
+  Guards --> AuthStore
+  Interceptors --> AuthStore
+  TrackUI --> ClockStore
+  StatsUI --> ClockStore
+  Settings --> ClockStore
+  Settings --> MeSvc
+  ClockStore --> MeSvc
   TrackUI --> DP
   StatsUI --> DP
-  TrackUI --> Item
   TrackUI --> TrackSvc
   StatsUI --> StatsSvc
+  Edit --> MgmtSvc
+  MeSvc --> API
   TrackSvc --> API
   StatsSvc --> API
+  MgmtSvc --> API
   AuthSvc --> API
   Interceptors --> API
 ```
 
-Habit Management UI and shared widgets (streak, counter, confirm dialog, …) were skimmed only; they sit beside Track/Statistics in the shell and are not redrawn here.
-
 ### Data Flow
 
-1. Unauthenticated users hit `/login`. `AuthService.login` stores JWT; interceptors attach `Authorization`.
-2. Authenticated child routes render under `AppContainerComponent`.
-3. **Track**: constructor `new Date()` → `currentDate` / `selectedDate` → `format` to `yyyy-MM-dd` → `GET /api/habit-track/{date}`. Check-in/unmark posts the same formatted `selectedDate` with `habitId`.
-4. **Statistics**: field `currentDate = new Date()`; `startDate = startOfMonth(currentDate)`; `endDate = currentDate`; both formatted locally → `GET /api/statistics/{startDate}/{endDate}`.
-5. Datepicker `maxDate` is that client `currentDate`. Options are applied once in `ngAfterViewInit`.
-6. HTTP errors: track and login `subscribe()` success-only. Generated `ErrorResponse` is unused. Invalid timezone save (when added) has no existing error-surface pattern.
+1. **Login** (`/login`, `noAuthGuard`): `AuthService.login` → JWT + username stored in Elf persist (`ht_auth` / `localStorage`). Interceptors attach `Authorization` on subsequent calls.
+2. **Authenticated shell** (`AppContainerComponent`, `authGuard` on children): default redirect `/` → `track`. Nav: Track, Edit, Statistics, Settings, Logout.
+3. **User clock bootstrap**: First consumer of `UserClockStore.getClock()` triggers single shared `GET /api/me` (`shareReplay(1)`). Track and Statistics parse `clock.today` with `date-fns` `parseISO` for `currentDate` / range defaults.
+4. **Track**: `GET /api/habit-track/{date}` for list; check-in/unmark `POST`/`DELETE /api/habit-track` with `{ date, habitId }` formatted from **selected** date (still civil `yyyy-MM-dd` strings). Datepicker `maxDate` bound to server `today`; **no `minDate`** on track screen — UI may allow dates outside backend check-in window.
+5. **Statistics**: `startDate = startOfMonth(today)`, `endDate = today` from clock; `GET /api/statistics/{startDate}/{endDate}`.
+6. **Settings**: Form prefilled from clock; `PUT /api/me` `{ timezone }`; success calls `applyTimezoneUpdate`; **HttpErrorResponse** surfaced in template (first real API error UX in app).
+7. **Logout / 401**: `refresh-token.interceptor` clears auth and navigates to login (TODO: no refresh-token rotation).
 
 ### Key Design Decisions
 
-Observed choices (not new ADRs). Trade-offs recorded so Construction does not treat them as accidental.
-
 | Decision | Context | Alternatives considered | Consequences |
 |----------|---------|-------------------------|--------------|
-| Client clock as domain today | No `/today` in checked-in OpenAPI; constructors need a `Date` for list, max, and payload | (A) Consume API today — blocked by current snapshot. (B) Keep `new Date()` — current. (C) User-picked “as of” without a server today — still invents civil date | Track/statistics/check-in can disagree with the user’s IANA today after midnight or TZ change |
-| Generated OpenAPI client | `swagger/api-docs.json` + `ng-openapi-gen` | Hand-written HttpClient; runtime OpenAPI fetch | Fast CRUD; **regenerate required** before the UI can call today/timezone |
-| Elf persist to `localStorage` | Session across refresh | Memory-only; cookie session | No timezone/today in session shape; settings will need a different store or API-backed profile |
-| Domain law stays in backend | README / AGENTS.md | Duplicate rules in Angular services | UI must hide illegal actions only; do not re-implement enforcement |
+| Generated OpenAPI client | `swagger/api-docs.json` + `ng-openapi-gen` | Hand-written HttpClient | Regenerate after backend contract changes; do not edit `web-api/` |
+| Elf persist for auth only | JWT session across refresh | Include timezone in localStorage | Clock is memory-only; cleared on full reload until next `GET /api/me` |
+| In-memory User Clock cache | Avoid duplicate `/api/me` on every screen | Per-route fetch; persist clock | Must `clear()` on logout; timezone update does not refetch `today` (by design) |
+| Server today for defaults/max | Align UI with backend civil day | Browser `new Date()` | Track/statistics agree with API boundaries when clock load succeeds |
+| Domain enforcement in backend | README / AGENTS.md | Client-side check-in rules | UI should hide illegal actions; gaps (no track `minDate`) defer failures to API |
+| Functional interceptors | Angular 18 `withInterceptors` | Class-based interceptors | Token + 401 logout pipeline is centralized |
 
 ### Improvement Opportunities
 
-- Introduce a **single API-today source** consumed by Track default/max, Statistics default/max, and check-in payload (see Interaction Diagrams for the current coupling).
-- Add settings (IANA view/change; UTC-backfill still editable; do not hide the field) plus regenerate `web-api`.
-- First real **API-error surface** (`ErrorResponse`) for invalid timezone save — none exists.
-- Datepicker must **re-init or update options** when max/today is swapped after first `ngAfterViewInit`.
-- Do not fold check-in window, streak, or `status`→`done` into this intent.
+- **Refresh token** flow instead of logout-on-401 (`refresh-token.interceptor.ts` TODO).
+- **Track datepicker `minDate`** aligned with backend “yesterday window” (or hide out-of-window dates) — currently domain-deferred.
+- **Login error UX** (success-only subscribe) and **Track check-in errors** — reuse Settings `ErrorResponse` pattern.
+- **Datepicker re-init** when `maxDate`/`today` changes after `ngAfterViewInit` (still one-shot options).
+- **OpenAPI / UI parity**: `HabitDto` may omit pause/archive/state visible in backend domain doc — confirm contract drift.
+- **AuthProps typing**: nullable fields vs strict `string` interface in `auth.store.ts`.
 
 ## Interaction Diagrams
 
-Current Track list + check-in path using **client-clock today** (constructor `new Date()`, local `yyyy-MM-dd`). This is the as-is transaction the intent must replace.
+### Session bootstrap and server today (Track)
 
 ```mermaid
 sequenceDiagram
     actor User
     participant Track as TrackHabitsComponent
-    participant Clock as BrowserClock
-    participant Fmt as DateFnsFormat
+    participant Clock as UserClockStore
+    participant Me as UserClockService
+    participant API as Spring Boot
+    participant Fmt as date-fns
     participant Client as HabitTrackService
-    participant API as HabitTrackAPI
 
-    User->>Track: Open Track route
-    Track->>Clock: new Date()
-    Clock-->>Track: currentDate and selectedDate
+    User->>Track: Navigate to /track
+    Track->>Clock: getClock()
+    alt first load this session
+        Clock->>Me: getMe()
+        Me->>API: GET /api/me
+        API-->>Me: UserClockResponse today timezone
+        Me-->>Clock: tap + shareReplay
+    else cached
+        Clock-->>Track: of cached clock
+    end
+    Track->>Fmt: parseISO clock.today
+    Fmt-->>Track: currentDate selectedDate
     Track->>Fmt: format selectedDate yyyy-MM-dd
-    Fmt-->>Track: local calendar date
     Track->>Client: getTrackingList date
     Client->>API: GET /api/habit-track/{date}
-    API-->>Client: HabitTrackResponse list
-    Client-->>Track: subscribe next
-    Track-->>User: Render list maxDate is client currentDate
+    API-->>Track: HabitTrackResponse list
+    Track-->>User: List + datepicker maxDate = today
+```
 
-    User->>Track: Toggle check-in
-    Track->>Fmt: format selectedDate yyyy-MM-dd
-    Fmt-->>Track: same local date
-    alt marked done
-        Track->>Client: trackHabit body date habitId
-        Client->>API: POST /api/habit-track
-    else unmarked
-        Track->>Client: untrackHabit body date habitId
-        Client->>API: DELETE /api/habit-track
+### Timezone save (Settings)
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Settings as SettingsComponent
+    participant Clock as UserClockStore
+    participant Me as UserClockService
+    participant API as Spring Boot
+
+    User->>Settings: Open /settings
+    Settings->>Clock: getClock()
+    Clock-->>Settings: timezone for form patch
+    User->>Settings: Change timezone Save
+    Settings->>Me: updateMe body timezone
+    Me->>API: PUT /api/me
+    alt success
+        API-->>Me: UserClockResponse
+        Me-->>Settings: next
+        Settings->>Clock: applyTimezoneUpdate
+        Note over Clock: today unchanged in-session
+        Settings-->>User: saveSuccess
+    else validation error
+        API-->>Settings: ErrorResponse
+        Settings-->>User: errorMessage in UI
     end
-    Client-->>Track: subscribe success only
-    Track->>Client: refresh list
-    Note over Track,API: ErrorResponse unused; no error UI
 ```
 
 <!--
-Text fallback — Track / check-in using client-clock today:
-1. User opens the Track route.
-2. TrackHabitsComponent constructor calls new Date() and assigns currentDate and selectedDate (track-habits.component.ts L49–50).
-3. refresh() formats selectedDate with date-fns format(..., 'yyyy-MM-dd') in the browser's local timezone (L57–59).
-4. HabitTrackService.getTrackingList sends GET /api/habit-track/{date}. The generated client requires that path param; there is no omit-for-today.
-5. The list renders. Datepicker maxDate is the same client currentDate (track-habits.component.html). Air Datepicker options are set once in ngAfterViewInit.
-6. On check-in or unmark, handleStatusChange formats the same selectedDate (L66–78) and POST or DELETE /api/habit-track with { date, habitId }.
-7. subscribe() has a success path only (refresh). Generated ErrorResponse is never bound. A later invalid timezone save has no existing error-surface pattern.
-Statistics (not drawn): currentDate = new Date(); startDate = startOfMonth(currentDate); endDate = currentDate; GET /api/statistics/{startDate}/{endDate} with the same local format.
+Text fallback — Track with server today:
+1. User opens Track; ngOnInit calls UserClockStore.getClock().
+2. Store issues GET /api/me once per session (shareReplay), caches UserClockResponse.
+3. Track parses clock.today to Date, sets selectedDate and currentDate, calls refresh().
+4. refresh formats selectedDate to yyyy-MM-dd and GET /api/habit-track/{date}.
+5. Check-in/unmark POST or DELETE /api/habit-track with same formatted date; subscribe success-only.
+6. Datepicker maxDate is server today; minDate not set on track template.
+
+Text fallback — Settings timezone:
+1. Form patched from getClock().timezone.
+2. PUT /api/me with selected IANA timezone.
+3. On success applyTimezoneUpdate keeps prior today, updates timezone only.
+4. On HTTP error, message shown from err.error.message.
 -->
 
-## Impact for Intent timezone-today
+## Impact for Intent 260914-full-repo-scan
 
-Blast radius is **high** and cross-cutting: Track Habits, Statistics, Datepicker, Generated Web API Client, and (new) App Shell settings. Authentication is involved only if settings errors reuse login’s missing error path. Habit Management UI is out of scope. Details: [component-inventory.md](./component-inventory.md).
+Full-repo scan documents **as-built** UI architecture including **user-clock** integration (relevant to timezone/today theme across the monorepo). Remaining gaps (refresh token, track minDate, login errors, contract field drift) are recorded for downstream intents — not blocking scan completion. Blast radius for future clock changes remains **cross-cutting**: User Clock, Track, Statistics, Settings, Generated Web API Client, App Shell navigation.

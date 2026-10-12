@@ -1,77 +1,77 @@
-# API Documentation
+# API Documentation — habit-tracker-springboot
 
-**Repo:** habit-tracker-springboot  
-**Scan kind:** partial — inventory recorded here only; [architecture.md](./architecture.md) and [component-inventory.md](./component-inventory.md) cross-reference this file.
+## Overview
 
-OpenAPI UI is on (`springdoc` 2.8.9; `OpenAPIConfig` skimmed). Bearer JWT. Default produce JSON.
+- **Base style**: JSON REST under `/api`
+- **Auth**: Bearer JWT (except login, actuator, OpenAPI UI)
+- **Discovery**: springdoc OpenAPI 3 at `/v3/api-docs`, Swagger UI at `/swagger-ui/**`
+- **Health**: `GET /actuator/health` (unauthenticated; Docker HEALTHCHECK)
 
-## Security
+Related: [architecture.md](./architecture.md) interaction diagrams, [component-inventory.md](./component-inventory.md#rest-api-adapters).
 
-Public (`WebSecurityConfig`):
+## Authentication
 
-- `POST /api/auth/**`
-- `GET /actuator/health`
-- `/swagger-ui/**`, `/v3/api-docs/**`
+| Method | Path | Controller | Description |
+|--------|------|------------|-------------|
+| POST | `/api/auth/login` | `AuthController` | Username/password → JWT; rejects non-active users (e.g. `PENDING_VERIFICATION`) |
 
-Everything else: authenticated. CORS from `cors.allowed-origins` (required env). CSRF off; session `STATELESS`.
+No registration, refresh, or logout endpoints in codebase.
 
-There is **no** `/api/user`, `/api/me`, or timezone/today resource. A new GET/PATCH (or equivalent) must sit behind JWT.
+## Habits
 
-## REST handlers (11 methods, 5 controllers)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/habit` | List habits for authenticated user |
+| GET | `/api/habit/{id}` | Get one habit (owner-scoped) |
+| POST | `/api/habit` | Create habit |
+| PUT | `/api/habit` | Update habit |
+| DELETE | `/api/habit` | Delete habit |
 
-### Auth — `AuthController` `/api/auth`
+DTOs in `dto` package; mapped via `HabitMapper`. Entity lacks domain `state` / `startDate` fields documented in `docs/domain.md`.
 
-| Method | Path | Auth | Body / result |
-|--------|------|------|----------------|
-| POST | `/api/auth/login` | public | `LoginRequest` → `LoginResponse` `{ token, tokenExpiresIn }` |
+## Check-ins (habit track)
 
-No register, refresh, or profile.
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/habit-track/{date}` | Tracking board: habits with done/status for `date` (`LocalDate`) |
+| POST | `/api/habit-track` | Mark check-in (`HabitTrackRequest`: habit id, date) |
+| DELETE | `/api/habit-track` | Remove check-in |
 
-### Habit catalog — `HabitController` `/api/habit`
+**Validation**: `HabitTrackRequest` uses `@PastOrPresent` on date (server calendar), not user-timezone “today/yesterday” window from domain doc.
 
-| Method | Path | Auth | Result |
-|--------|------|------|--------|
-| GET | `/api/habit` | JWT | `List<HabitDTO>` |
-| GET | `/api/habit/{id}` | JWT | `HabitDTO` |
-| POST | `/api/habit` | JWT | 201 `HabitDTO` |
-| PUT | `/api/habit/{id}` | JWT | `HabitDTO` |
-| DELETE | `/api/habit/{id}` | JWT | 204 |
+**Response**: `HabitTrackResponse` uses legacy `status` naming (see domain glossary).
 
-### Check-in — `HabitTrackController` `/api/habit-track`
+## Statistics
 
-| Method | Path | Auth | Notes |
-|--------|------|------|--------|
-| GET | `/api/habit-track/{date}` | JWT | Path `LocalDate` (ISO). Lists habits with `HabitTrackResponse.status` = day done (boolean; not habit lifecycle). |
-| POST | `/api/habit-track` | JWT | `HabitTrackRequest` `{ habitId, date }`. `date` `@NotNull @PastOrPresent` (JVM clock). 201 empty. 409 if log exists. |
-| DELETE | `/api/habit-track` | JWT | Same body. 204. 409 if no log. |
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/statistics/{startDate}/{endDate}` | Completion counts over inclusive calendar range |
 
-Server does not derive or validate today|yesterday in `user.timezone` (window is another package).
+Path variables are dates; semantics are calendar-day based, not fully “scheduled day” model from `docs/domain.md`.
 
-### Statistics — `HabitStatisticsController` `/api/statistics`
+## Habit icons
 
-| Method | Path | Auth | Notes |
-|--------|------|------|--------|
-| GET | `/api/statistics/{startDate}/{endDate}` | JWT | Range-from / range-to. Path names collide with domain `startDate` (habit life). Out of this package. |
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/habit-icons` | List active icons for UI picker |
 
-### Habit icons — `HabitIconController` `/api/habit-icons`
+## User clock
 
-| Method | Path | Auth | Result |
-|--------|------|------|--------|
-| GET | `/api/habit-icons` | JWT | `List<HabitIconDTO>` |
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/me` | Current user profile fields including **today** (user timezone) and timezone id |
+| PATCH | `/api/me` | Update IANA timezone; does not rewrite historical `HabitLog.date` |
 
-## Errors (handler deep-read)
+Implemented alignment with domain for timezone/today; primary tested API surface.
 
-`GlobalExceptionHandler` maps `BadRequestException` → 400, plus validation (`MethodArgumentNotValidException`) → 400. Unknown IANA ids should fail at the API/service boundary and reuse this 400 path. Other statuses (401/403/404/409) exist; full matrix not re-listed here.
+## Error Handling
 
-## Internal / ops
+`GlobalExceptionHandler` maps domain and validation exceptions to HTTP status and structured error bodies. Invalid JWT parsing in filter may fail silently (no authentication) rather than 401 from filter layer — clients see 403 on protected routes.
 
-- `StreakResetScheduler.resetStreaksAtMidnight` — cron `app.scheduling.streak-reset.cron`, zone `app.scheduling.timezone`. Not an HTTP API. Out of issue 14.
-- `DataInitializer` seeds `testuser` / `testpassword` on empty username lookup. No timezone.
+## Security Headers & CORS
 
-## Missing contract (issue 14)
+`CORS_ALLOWED_ORIGINS` environment variable required for browser clients. JWT secret via `JWT_SECRET`.
 
-Needed, not present:
+## Operation Count
 
-- Authenticated read: `timezone` (IANA) + `today` (calendar date in that zone at the request instant).
-- Authenticated update: timezone only; must not rewrite `habit_log.date`.
-- Reject unknown zone ids.
+**13** mapped REST operations across **6** controller base paths (per developer scan), plus actuator/OpenAPI as non-business surfaces.

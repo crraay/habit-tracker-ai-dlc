@@ -1,0 +1,45 @@
+{
+  "stage": "code-generation",
+  "unit": "habit-tracker-angular",
+  "coverage_note": "FR2 planning-only: traceability to requirements and stories; no application file targets.",
+  "upstream_ids": [
+    "FR2",
+    "FR2.1",
+    "FR3.3",
+    "US2.5",
+    "NFR5.17",
+    "NFR7.26"
+  ],
+  "coverage": [
+    {
+      "id": "FR2",
+      "status": "OK",
+      "target": "code-generation-plan.md Boundary — zero repo edits"
+    },
+    {
+      "id": "FR2.1",
+      "status": "OK",
+      "target": "Steps 1–5 record-only; source-manifest empty writes"
+    },
+    {
+      "id": "FR3.3",
+      "status": "OK",
+      "target": "code-summary.md + bolt-plan F2 reference steps"
+    },
+    {
+      "id": "US2.5",
+      "status": "GAP",
+      "target": "Follow-up F2-R2 login error UX"
+    },
+    {
+      "id": "NFR5.17",
+      "status": "GAP",
+      "target": "Follow-up F2-R4 test:ci before build-image"
+    },
+    {
+      "id": "NFR7.26",
+      "status": "GAP",
+      "target": "Follow-up F2-R5 CI alignment"
+    }
+  ]
+}

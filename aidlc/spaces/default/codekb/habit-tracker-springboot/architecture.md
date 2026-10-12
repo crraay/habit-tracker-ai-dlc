@@ -1,150 +1,191 @@
-# Architecture
-
-**Repo:** habit-tracker-springboot  
-**Scan kind:** partial — see [reverse-engineering-timestamp.md](./reverse-engineering-timestamp.md)  
-**Inventories:** APIs in [api-documentation.md](./api-documentation.md); components in [component-inventory.md](./component-inventory.md); stack in [technology-stack.md](./technology-stack.md)
+# Architecture — habit-tracker-springboot
 
 ## Architecture Analysis
 
 ### System Overview
 
-A single Maven JAR (`com.kostya:habit-tracker-springboot`) exposing a JWT-protected REST API. One PostgreSQL schema is the persistence boundary. The Angular client is a sibling repo; this backend does not serve UI. Domain law lives in `docs/domain.md` and is **ahead** of the code for timezone and today.
+A **layered monolith**: Spring Boot 3.5 hosts REST controllers, transactional services, Spring Data JPA repositories, and PostgreSQL (Flyway migrations). Stateless **JWT** secures `/api/**`; actuator and OpenAPI endpoints are public. One scheduled job resets streaks on a cron in a **single configured timezone**.
+
+Cross-references: [component-inventory.md](./component-inventory.md), [code-structure.md](./code-structure.md), [business-overview.md](./business-overview.md).
 
 ### Architectural Style
 
-**Layered modular monolith** (single deployable, package-by-layer under `com.kostya.habittracker`):
+| Style | Evidence |
+|-------|----------|
+| **Monolithic deployable** | Single Maven module, one JAR/Docker image |
+| **Layered (ports & adapters lite)** | `controller` → `service` → `repository` → `entity`; DTOs + manual mappers at the edge |
+| **Database-centric domain** | JPA entities are the persistence model; aggregates stored in `HabitAggregate` |
 
-- Adapter: `controller/`, `filter/`, `scheduled/`
-- Application: `service/` + `service/impl/`
-- Persistence: `entity/`, `repository/`, Flyway SQL
-- Cross-cutting: `config/`, `exception/`, `aspect/` (aspect skimmed)
-
-Evidence: one module in `pom.xml`; no inter-service messaging; `ddl-auto=validate` plus Flyway V1–V5. Not microservices, not serverless.
-
-Internal packages are technical layers, not bounded contexts. Ownership is still clear enough for issue 14: **User Identity** owns timezone; **Check-in** owns `habit_log.date` and must not rewrite it when timezone changes.
+Not microservices, not event-driven; synchronous HTTP request/response only.
 
 ### Component Relationships
 
 ```mermaid
-flowchart LR
-  Client[Angular client] --> API[Spring MVC controllers]
-  API --> Sec[Security Filter Chain]
-  Sec --> Auth[Auth]
-  Sec --> Habits[Habit Catalog]
-  Sec --> Checkin[Check-in]
-  Sec --> Stats[Statistics]
-  Sec --> Icons[Habit Icons]
-  Auth --> Users[User Identity]
-  Habits --> Users
-  Checkin --> Habits
-  Checkin --> Agg[Habit Aggregate]
-  Stats --> Agg
-  Users --> DB[(PostgreSQL)]
-  Habits --> DB
-  Checkin --> DB
-  Agg --> DB
-  Sched[Scheduling] --> Agg
-  Law[Domain Contract] -.-> Users
-  Law -.-> Checkin
+flowchart TB
+  subgraph edge [Edge]
+    C[REST Controllers]
+    F[JWT + Correlation Filters]
+    SEC[Spring Security Chain]
+  end
+  subgraph app [Application]
+    S[Services]
+    SCH[StreakResetScheduler]
+  end
+  subgraph data [Data]
+    R[JPA Repositories]
+    DB[(PostgreSQL)]
+  end
+  Client --> SEC --> F --> C --> S --> R --> DB
+  SCH --> S
+  S --> R
 ```
-
-Text fallback for the component map is in the HTML comment after Interaction Diagrams.
 
 ### Data Flow
 
-1. Request hits `JwtRequestFilter` then a controller (except public `/api/auth/**`, health, OpenAPI).
-2. Controller takes `@AuthenticationPrincipal UserDetails` and DTOs; services load owner-scoped entities.
-3. Check-in writes `HabitLog.date` as `DATE` / `LocalDate` (the check-in identity) and updates `HabitAggregate`.
-4. Scheduler independently computes `LocalDate.now(ZoneId.of(app.scheduling.timezone))` and resets streaks — **ops clock**, not user clock.
-5. There is **no** path that reads or writes `user.timezone` or returns server `today`.
+- **Write path**: Controller validates DTO → service enforces user scope (mostly) → repository persists entity → mappers shape responses.
+- **Read path**: Repository queries by user and/or date → service merges habits with log/aggregate state → DTO response.
+- **Streak maintenance**: Inline updates on track/untrack plus nightly batch comparing `lastCheckInDate` to scheduler “today”.
 
 ### Key Design Decisions
 
-| Decision | Implication for issue 14 |
-|----------|--------------------------|
-| Canonical law in `docs/domain.md`; backend enforces | Add timezone/today to match the glossary; do not invent a second clock. |
-| Check-in identity is `habit_log.date` DATE | Timezone PATCH must update only `user.timezone`. Leave log dates untouched. |
-| JWT + `anyRequest().authenticated()` | New GET/PATCH for timezone/today needs a new resource (no `/api/user` or `/api/me` today) behind JWT. |
-| Flyway V1–V5; JPA validate | New column via V6+ with UTC backfill then NOT NULL. |
-| Test profile disables Flyway, `ddl-auto=create-drop` | A NOT NULL timezone migration will not run in the current suite unless tests change. |
-| `app.scheduling.timezone` | Do not reuse as the user clock. Streak-job TZ is out of this package. |
-
-Observed vs intended: domain already requires `user.timezone` + derived today; code has neither. `@PastOrPresent` on track dates uses the JVM clock — window enforcement is a later package; this package’s stopgap is exposing server `today`.
+1. **Stateless JWT** — No server sessions; `JwtRequestFilter` populates security context per request ([Security and JWT](./component-inventory.md#security-and-jwt)).
+2. **Manual mappers** — No MapStruct; explicit mapping classes keep dependencies minimal.
+3. **Validated schema** — `ddl-auto=validate` + Flyway V1–V6; schema is source of truth in SQL migrations.
+4. **User timezone as column** — V6 adds timezone; clock service computes `today` without rewriting `HabitLog.date` (intentional immutability of logged dates).
+5. **Global scheduler timezone** — `app.scheduling.timezone` drives cron “today”, not each owner’s zone (misalignment with domain doc).
 
 ### Improvement Opportunities
 
-- Add authenticated user clock resource (`timezone` + derived `today`); reject unknown IANA ids; map via existing `BadRequestException` → 400.
-- Backfill existing users to UTC in Flyway; document UTC as migration default, not product TZ.
-- Seed `testuser` with a zone after the column exists.
-- Do not couple user today to `SchedulingConfig.applicationTimeZone()`.
-- Later packages (not this scan’s work): today\|yesterday window, live-streak rule vs midnight zeroing, `status` → `done`.
+- Align check-in validation and streak reset with **per-user today** and domain lifecycle.
+- Scope all log queries by **user** (see `HabitTrackServiceImpl.getTrackingList` risk in [code-quality-assessment.md](./code-quality-assessment.md)).
+- Harden production bootstrap (disable dev `DataInitializer`, externalize secrets).
+- Expand automated tests around habit CRUD, tracking, streaks, and auth edge cases.
 
 ## Interaction Diagrams
 
-Current mark-done path (what exists). Client supplies the calendar date; the server does not derive today.
+### Login and authenticated request
 
 ```mermaid
 sequenceDiagram
-  actor Client
-  participant Filter as JwtRequestFilter
-  participant API as HabitTrackController
-  participant Svc as HabitTrackServiceImpl
-  participant HabitRepo as HabitRepository
-  participant LogRepo as HabitLogRepository
-  participant Agg as HabitAggregateService
+  participant Client
+  participant AuthController
+  participant AuthService
+  participant UserDetailsService
+  participant JwtUtil
+  participant JwtRequestFilter
+  participant API as Protected Controller
+
+  Client->>AuthController: POST /api/auth/login
+  AuthController->>AuthService: authenticate(credentials)
+  AuthService->>UserDetailsService: loadUserByUsername
+  UserDetailsService-->>AuthService: UserDetails + status check
+  AuthService->>JwtUtil: generateToken
+  AuthService-->>Client: JWT body
+
+  Client->>JwtRequestFilter: Authorization Bearer JWT
+  JwtRequestFilter->>JwtUtil: parse & validate
+  JwtRequestFilter->>API: SecurityContext set
+  API->>API: @PreAuthorize / ownership checks
+  API-->>Client: JSON response
+```
+
+### Habit CRUD (owner-scoped)
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant HabitController
+  participant HabitService
+  participant HabitRepository
   participant DB as PostgreSQL
 
-  Client->>Filter: POST /api/habit-track {habitId, date}
-  Filter->>API: authenticated UserDetails
-  API->>Svc: trackHabit(request, user)
-  Svc->>HabitRepo: findByIdAndUserId
-  HabitRepo->>DB: SELECT habit
-  Svc->>LogRepo: findByHabitAndDate
-  alt already exists
-    Svc-->>Client: 409 Conflict
-  else new check-in
-    Svc->>LogRepo: save HabitLog.date = request.date
-    LogRepo->>DB: INSERT habit_log
-    Svc->>Agg: applyTrack(habit, request.date)
-    Agg->>DB: UPDATE habit_aggregate
-    Svc-->>Client: 201
+  Client->>HabitController: POST /api/habit (JWT)
+  HabitController->>HabitService: create(dto, principal)
+  HabitService->>HabitRepository: save(habit with userId)
+  HabitRepository->>DB: INSERT
+  DB-->>Client: HabitResponse via mapper
+
+  Client->>HabitController: GET /api/habit/{id}
+  HabitController->>HabitService: getById(id, principal)
+  HabitService->>HabitRepository: findById + user match
+  alt not owner
+    HabitService-->>Client: 404/403 via exception handler
   end
 ```
 
-Issue-14 gap: there is no today/timezone transaction. Intended shape (not implemented) — timezone change must not touch `habit_log`.
+### Mark check-in (track)
 
 ```mermaid
 sequenceDiagram
-  actor Client
-  participant Filter as JwtRequestFilter
-  participant API as User clock resource (missing)
-  participant Users as User Identity
-  participant Logs as habit_log
+  participant Client
+  participant HabitTrackController
+  participant HabitTrackService
+  participant HabitLogRepository
+  participant AggregateService as HabitAggregate logic
   participant DB as PostgreSQL
 
-  Note over API: No /api/user or /api/me exists today
-  Client->>Filter: GET timezone + today (missing)
-  Filter->>API: JWT user
-  API->>Users: load user.timezone (column missing)
-  API-->>Client: timezone + today in that zone (missing)
-
-  Client->>Filter: PATCH timezone = IANA id (missing)
-  Filter->>API: JWT user
-  API->>API: ZoneId.of / reject unknown
-  API->>Users: UPDATE user.timezone only
-  Users->>DB: write user row
-  Note over Logs,DB: habit_log.date rows are not rewritten
-  API-->>Client: new timezone + newly derived today
+  Client->>HabitTrackController: POST /api/habit-track
+  HabitTrackController->>HabitTrackService: track(request, user)
+  HabitTrackService->>HabitTrackService: validate habit ownership
+  HabitTrackService->>HabitLogRepository: save log for date
+  HabitTrackService->>AggregateService: applyTrack / recompute
+  AggregateService->>DB: update HabitAggregate
+  HabitTrackService-->>Client: HabitTrackResponse
 ```
 
-<!--
-Text fallback — component map:
-Angular client → Spring MVC controllers → Security Filter Chain → Auth, Habit Catalog, Check-in, Statistics, Habit Icons.
-Auth and Habit Catalog depend on User Identity. Check-in depends on Habit Catalog and Habit Aggregate. Statistics reads aggregates. Scheduling (ops) writes Habit Aggregate using app.scheduling.timezone. All persist to one PostgreSQL schema. Domain Contract is the law for User Identity and Check-in; it is not a runtime component.
+### Daily tracking list
 
-Text fallback — check-in sequence:
-Client POSTs /api/habit-track with habitId and a LocalDate. JWT filter authenticates. HabitTrackServiceImpl loads the habit by id+user, rejects a duplicate (habit_id, date) with 409, inserts habit_log.date as the client date, then updates HabitAggregate. The server does not compute today from user.timezone.
+```mermaid
+sequenceDiagram
+  participant Client
+  participant HabitTrackController
+  participant HabitTrackService
+  participant HabitRepository
+  participant HabitLogRepository
 
-Text fallback — timezone/today (missing):
-No user-clock resource exists. Intended GET returns stored IANA timezone plus today derived in that zone. Intended PATCH validates the IANA id, updates only user.timezone, and leaves habit_log.date unchanged. After the change, today is computed in the new zone.
--->
+  Client->>HabitTrackController: GET /api/habit-track/{date}
+  HabitTrackController->>HabitTrackService: getTrackingList(date, user)
+  HabitTrackService->>HabitRepository: habits for user
+  HabitTrackService->>HabitLogRepository: findByDate(date)
+  Note over HabitTrackService,HabitLogRepository: Logs not filtered by user — correctness risk
+  HabitTrackService-->>Client: merged done flags per habit
+```
+
+### Streak reset (scheduled)
+
+```mermaid
+sequenceDiagram
+  participant Cron as Spring Scheduler
+  participant StreakResetScheduler
+  participant Repository as HabitAggregateRepository
+  participant DB as PostgreSQL
+
+  Cron->>StreakResetScheduler: cron (app.scheduling.timezone)
+  StreakResetScheduler->>StreakResetScheduler: today = zone date
+  StreakResetScheduler->>Repository: findAggregatesNeedingStreakReset(today)
+  loop each aggregate
+    StreakResetScheduler->>Repository: reset current streak if lastCheckIn != today
+  end
+  Repository->>DB: UPDATE
+```
+
+### User clock (timezone / today)
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant UserClockController
+  participant UserClockService
+  participant UserRepository
+  participant Clock as Configured Clock
+
+  Client->>UserClockController: GET /api/me
+  UserClockController->>UserClockService: getMe(user)
+  UserClockService->>UserRepository: load timezone
+  UserClockService->>Clock: now in user zone
+  UserClockService-->>Client: today + timezone
+
+  Client->>UserClockController: PATCH /api/me (timezone)
+  UserClockController->>UserClockService: updateTimezone
+  UserClockService->>UserRepository: persist (logs unchanged)
+```
