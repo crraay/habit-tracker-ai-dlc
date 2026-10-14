@@ -1,0 +1,24 @@
+{
+  "stage": "code-generation",
+  "unit": "f1-springboot-ci",
+  "upstream_ids": [
+    "FR1", "FR1.1", "FR1.2", "FR1.3", "FR2", "FR3", "FR3.1", "FR4",
+    "NFR1", "NFR2", "NFR3", "NFR4", "NFR5", "NFR6"
+  ],
+  "coverage": [
+    { "id": "FR1", "status": "OK", "target": "habit-tracker-springboot/.github/workflows/build-image.yml" },
+    { "id": "FR1.1", "status": "OK", "target": "habit-tracker-springboot/.github/workflows/build-image.yml" },
+    { "id": "FR1.2", "status": "OK", "target": "habit-tracker-springboot/.github/workflows/build-image.yml" },
+    { "id": "FR1.3", "status": "OK", "target": "aidlc/spaces/default/intents/261013-f1-springboot-ci/construction/code-generation/code-summary.md" },
+    { "id": "FR2", "status": "OK", "target": "habit-tracker-springboot/Dockerfile" },
+    { "id": "FR3", "status": "OK", "target": "habit-tracker-springboot/.github/workflows/deploy-to-elastic-beanstalk.yml" },
+    { "id": "FR3.1", "status": "OK", "target": "habit-tracker-springboot/.github/workflows/deploy-to-elastic-beanstalk.yml" },
+    { "id": "FR4", "status": "OK", "target": "aidlc/spaces/default/intents/261013-f1-springboot-ci/construction/code-generation/code-summary.md" },
+    { "id": "NFR1", "status": "OK", "target": "aidlc/spaces/default/intents/261013-f1-springboot-ci/construction/code-generation/source-manifest.json" },
+    { "id": "NFR2", "status": "OK", "target": "aidlc/spaces/default/intents/261013-f1-springboot-ci/construction/code-generation/code-summary.md" },
+    { "id": "NFR3", "status": "OK", "target": "aidlc/spaces/default/intents/261013-f1-springboot-ci/construction/code-generation/code-summary.md" },
+    { "id": "NFR4", "status": "OK", "target": "habit-tracker-springboot/.github/workflows/build-image.yml" },
+    { "id": "NFR5", "status": "OK", "target": "habit-tracker-springboot/.github/workflows/build-image.yml" },
+    { "id": "NFR6", "status": "OK", "target": "habit-tracker-springboot/.github/workflows/build-image.yml" }
+  ]
+}

@@ -32,7 +32,7 @@ See also: [architecture.md](./architecture.md), [api-documentation.md](./api-doc
 ## Stakeholders & Deployment Context
 
 - **Clients**: Angular and Compose frontends (sibling repos) consume this API with JWT and CORS from environment.
-- **Operations**: Docker image with actuator health; CI builds JAR and publishes container on `main` ([technology-stack.md](./technology-stack.md)).
+- **Operations**: Docker image with actuator health; on every **`main` push**, `build-image.yml` packages and publishes `docker.io/crraay/habit-tracker-springboot:latest` **without running Maven tests** in that workflow ([architecture.md](./architecture.md#production-image-publish-main), [code-quality-assessment.md](./code-quality-assessment.md)). Local and reusable CI (`build-and-test.yml`) do run `mvn test` but are not the documented production publish path on `main`.
 
 ## Out of Scope (in repo)
 

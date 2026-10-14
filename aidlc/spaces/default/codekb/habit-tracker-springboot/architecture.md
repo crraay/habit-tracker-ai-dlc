@@ -59,6 +59,7 @@ flowchart TB
 - Align check-in validation and streak reset with **per-user today** and domain lifecycle.
 - Scope all log queries by **user** (see `HabitTrackServiceImpl.getTrackingList` risk in [code-quality-assessment.md](./code-quality-assessment.md)).
 - Harden production bootstrap (disable dev `DataInitializer`, externalize secrets).
+- **Gate production image on tests** — `build-image.yml` skips Surefire; align with `build-and-test.yml` pattern or fail fast before Docker push.
 - Expand automated tests around habit CRUD, tracking, streaks, and auth edge cases.
 
 ## Interaction Diagrams
@@ -189,3 +190,54 @@ sequenceDiagram
   UserClockController->>UserClockService: updateTimezone
   UserClockService->>UserRepository: persist (logs unchanged)
 ```
+
+### Production image publish (`main`)
+
+```mermaid
+sequenceDiagram
+  participant GH as GitHub Actions
+  participant Runner as ubuntu-latest
+  participant Maven
+  participant Docker
+  participant Hub as Docker Hub
+
+  GH->>Runner: push main / workflow_dispatch
+  Runner->>Runner: checkout, Temurin 17, Maven cache
+  Runner->>Maven: mvn -B -DskipTests package
+  Note over Maven: Surefire skipped — no test gate
+  Runner->>Hub: docker login (secrets)
+  Runner->>Docker: docker build -t latest .
+  Note over Docker: Dockerfile build stage also skipTests
+  Docker->>Hub: docker push habit-tracker-springboot:latest
+```
+
+### Reusable build and test (`build-and-test.yml`)
+
+```mermaid
+sequenceDiagram
+  participant GH as GitHub Actions
+  participant Runner as ubuntu-latest
+  participant Maven
+  participant Artifacts as upload-artifact
+
+  GH->>Runner: push feat/actions_cicd or workflow_call
+  Runner->>Runner: checkout, Corretto 17, Maven cache
+  Runner->>Maven: mvn clean compile
+  Runner->>Maven: mvn test
+  Note over Maven: H2 + application-test profile
+  Runner->>Maven: mvn package -DskipTests
+  Runner->>Artifacts: JAR retention 1 day
+```
+
+### Legacy `main` overlap (Elastic Beanstalk)
+
+```mermaid
+flowchart LR
+  pushMain[push to main] --> buildImage[build-image.yml skipTests push]
+  pushMain --> eb[deploy-to-elastic-beanstalk.yml legacy]
+  eb --> call[workflow_call build-and-test.yml]
+  call --> tests[mvn test then package]
+  eb --> deployEB[EB deploy]
+```
+
+On `main`, production Docker publish and legacy EB deploy can run in parallel; only the legacy path invokes `build-and-test` tests — not the documented Docker Hub production path ([code-quality-assessment.md](./code-quality-assessment.md)).

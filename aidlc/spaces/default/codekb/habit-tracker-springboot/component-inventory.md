@@ -13,6 +13,8 @@ Components are logical building blocks in the monolith. Dependencies flow downwa
 | `HabitIconController` | Icon catalog read | Habit Icon Service |
 | `UserClockController` | `/api/me` today & timezone | User Clock Service |
 
+**Test coverage (focused scan)**: `UserClockControllerTest` (`@WebMvcTest`) exercises `/api/me` only among adapters.
+
 ## Authentication Services
 
 | Piece | Responsibility | Depends on |
@@ -56,6 +58,8 @@ Components are logical building blocks in the monolith. Dependencies flow downwa
 |-------|----------------|------------|
 | `UserClockService` / impl | Compute today in user TZ, update timezone | Persistence Layer, Infrastructure Configuration |
 
+**Test coverage (focused scan)**: `UserTodayTest`, clock-related integration tests.
+
 ## Habit Icon Service
 
 | Piece | Responsibility | Depends on |
@@ -75,6 +79,8 @@ Components are logical building blocks in the monolith. Dependencies flow downwa
 |-------|----------------|------------|
 | `UserRepository`, `HabitRepository`, `HabitLogRepository`, `HabitAggregateRepository`, `HabitIconRepository` | CRUD and custom queries | PostgreSQL (via JPA) |
 | Flyway migrations V1–V6 | Schema versioning | PostgreSQL |
+
+**Test coverage (focused scan)**: `UserTimezonePersistenceTest`, `TimezoneUpdateLeavesLogDatesTest` (H2, Flyway disabled in test profile).
 
 ## Domain Entities
 
@@ -96,12 +102,14 @@ Components are logical building blocks in the monolith. Dependencies flow downwa
 | `SchedulingConfig` | Enable cron |
 | `DataInitializer` | Dev user seed (production risk) |
 | `LogExecutionAspect` | Optional method logging |
+| `application-test.properties` | H2, test JWT, disabled Flyway/springdoc for Surefire |
 
 ## External Systems
 
 | System | Integration |
 |--------|-------------|
 | PostgreSQL | JDBC via Spring Boot datasource |
-| Docker registry | CI pushes `docker.io/crraay/habit-tracker-springboot:latest` |
+| Docker Hub | CI pushes `docker.io/crraay/habit-tracker-springboot:latest` via `build-image.yml` on `main` |
+| GitHub Actions | `build-image.yml` (publish, skip tests), `build-and-test.yml` (test + JAR artifact), legacy EB workflow |
 
 See [dependencies.md](./dependencies.md) for library-level dependencies.

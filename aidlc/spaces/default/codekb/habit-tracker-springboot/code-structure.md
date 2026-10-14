@@ -4,13 +4,14 @@
 
 | Path | Role |
 |------|------|
-| `pom.xml` | Maven build, Spring Boot 3.5.5 parent, dependencies |
+| `pom.xml` | Maven build, Spring Boot 3.5.5 parent, dependencies; default Surefire via `spring-boot-starter-test` (no custom Surefire plugin) |
 | `src/main/java/com/kostya/habittracker/` | All production code (68 sources) |
 | `src/main/resources/application.properties` | Runtime config (DB, JWT, CORS, scheduling) |
 | `src/main/resources/db/migration/` | Flyway V1–V6 |
-| `src/test/java/` | Six test classes |
+| `src/test/java/` | Five test classes (see [Test layout](#test-layout)) |
+| `src/test/resources/application-test.properties` | H2 profile, Flyway off, test JWT/CORS, springdoc disabled |
 | `docs/domain.md` | Canonical domain contract (ahead of code in places) |
-| `Dockerfile` | Multi-stage container build |
+| `Dockerfile` | Multi-stage container build (`mvn -B -DskipTests package` in build stage) |
 | `.github/workflows/` | CI test, image build, legacy EB deploy |
 
 See [technology-stack.md](./technology-stack.md) and [dependencies.md](./dependencies.md).
@@ -57,9 +58,19 @@ Flyway migrations define users, habits, logs, aggregates, icons, and user timezo
 
 ## Test Layout
 
-Tests mirror main package under `src/test/java/com/kostya/habittracker/` with `application-test.properties` (H2). Coverage concentrates on user clock/timezone; habit and streak paths largely untested ([code-quality-assessment.md](./code-quality-assessment.md)).
+Tests mirror main package under `src/test/java/com/kostya/habittracker/`:
+
+| Class | Style | Focus |
+|-------|--------|--------|
+| `HabittrackerApplicationTests` | `@SpringBootTest`, `@ActiveProfiles("test")` | Context load |
+| `UserClockControllerTest` | `@WebMvcTest` | `/api/me` MVC (4 methods) |
+| `UserTodayTest` | Unit + `@BeforeEach` | Domain “today” in user TZ |
+| `UserTimezonePersistenceTest` | `@SpringBootTest` | Timezone column persistence |
+| `TimezoneUpdateLeavesLogDatesTest` | `@SpringBootTest` | Log dates unchanged on TZ update |
+
+All profile-sensitive tests use `@ActiveProfiles("test")`. **~11** `@Test` methods total. Habit CRUD, track/untrack, streaks, and auth beyond clock are largely untested ([code-quality-assessment.md](./code-quality-assessment.md)).
 
 ## Agent / Docs Conventions
 
-- `AGENTS.md`, `README.md`, `DOCKER.md` — human and agent onboarding.
+- `AGENTS.md`, `README.md`, `DOCKER.md` — human and agent onboarding; `AGENTS.md` documents `build-and-test.yml` for CI tests and production image via `build-image`.
 - `.cursor/rules/habit-domain.mdc` — points agents to `docs/domain.md`.

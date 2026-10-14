@@ -62,7 +62,7 @@ Path variables are dates; semantics are calendar-day based, not fully “schedul
 | GET | `/api/me` | Current user profile fields including **today** (user timezone) and timezone id |
 | PATCH | `/api/me` | Update IANA timezone; does not rewrite historical `HabitLog.date` |
 
-Implemented alignment with domain for timezone/today; primary tested API surface.
+Implemented alignment with domain for timezone/today; **only REST surface with `@WebMvcTest` coverage** (`UserClockControllerTest`). See [code-structure.md](./code-structure.md#test-layout).
 
 ## Error Handling
 
@@ -74,4 +74,4 @@ Implemented alignment with domain for timezone/today; primary tested API surface
 
 ## Operation Count
 
-**13** mapped REST operations across **6** controller base paths (per developer scan), plus actuator/OpenAPI as non-business surfaces.
+**13** mapped REST operations across **6** controller base paths (per prior full scan), plus actuator/OpenAPI as non-business surfaces.

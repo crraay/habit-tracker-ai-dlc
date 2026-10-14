@@ -25,15 +25,15 @@
 |------------|---------|---------|
 | PostgreSQL JDBC | Boot-managed | Production database |
 | H2 | Test scope | In-memory tests |
-| Flyway | 11.10.3 | SQL migrations (`db/migration`) |
-| Hibernate / Jakarta Persistence | Boot-managed | ORM, `ddl-auto=validate` |
+| Flyway | 11.10.3 | SQL migrations (`db/migration`); **disabled in test profile** |
+| Hibernate / Jakarta Persistence | Boot-managed | ORM, `ddl-auto=validate` (prod), `create-drop` (test) |
 
 ## Security & API Docs
 
 | Technology | Version | Purpose |
 |------------|---------|---------|
 | JJWT | 0.12.6 | JWT signing and parsing |
-| springdoc-openapi-starter-webmvc-ui | 2.8.9 | OpenAPI 3 + Swagger UI |
+| springdoc-openapi-starter-webmvc-ui | 2.8.9 | OpenAPI 3 + Swagger UI (disabled in tests) |
 
 ## Developer Ergonomics
 
@@ -45,8 +45,12 @@
 
 | Technology | Purpose |
 |------------|---------|
-| Docker multi-stage `Dockerfile` | JRE image, HEALTHCHECK on actuator |
-| GitHub Actions | `build-and-test.yml`, `build-image.yml`, legacy EB workflow |
+| Docker multi-stage `Dockerfile` | JRE image, HEALTHCHECK on actuator; Maven build stage uses `-DskipTests` |
+| GitHub Actions — `build-image.yml` | Temurin 17, Maven cache, Docker Hub push on `main` |
+| GitHub Actions — `build-and-test.yml` | Corretto 17, `clean compile` → `test` → `package -DskipTests`, JAR artifact |
+| GitHub Actions — EB deploy | Legacy; `workflow_call` to `build-and-test.yml` |
+
+Maven lifecycle (default Surefire): `mvn test` runs unit/integration tests; `mvn package` runs tests unless `-DskipTests`. No JaCoCo plugin in `pom.xml`.
 
 ## Configuration Surface
 

@@ -21,5 +21,17 @@
       "habit-tracker-springboot"
     ],
     "status": "complete"
+  },
+  {
+    "uuid": "01a134b5-5831-70cc-8ef9-6773a1f1cae5",
+    "slug": "f1-springboot-ci",
+    "dirName": "261013-f1-springboot-ci",
+    "scope": "express",
+    "repos": [
+      "habit-tracker-angular",
+      "habit-tracker-compose",
+      "habit-tracker-springboot"
+    ],
+    "status": "complete"
   }
 ]

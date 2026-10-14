@@ -2,20 +2,35 @@
 
 | Field | Value |
 |-------|--------|
-| **Date** | 2026-09-14 |
-| **Intent** | 260914-full-repo-scan |
+| **Date** | 2026-10-14 |
+| **Intent** | 261013-f1-springboot-ci |
 | **Repository** | habit-tracker-springboot |
-| **Git commit (HEAD)** | `0785ab0b3b7fb5c408f387b62239d22c7b68729a` |
-| **Synthesis** | Architect full rescan from developer handoff only (staging, not published) |
+| **Git commit (scan)** | `803c68843c530857a78ac8e792acefc29e46decf` |
+| **Synthesis** | Architect focused merge (STALE store): CI/test paths from developer link 1 |
+
+Prior full-repo synthesis (2026-09-14, intent `260914-full-repo-scan`) remains in store prose; this run extends CI, Maven test, and automated test inventory only.
 
 ## Scope of Analysis
 
 ```yaml
 scope_version: 1
-kind: full
-intent: 260914-full-repo-scan
-fingerprint: 5fb048d893308721e8db4846887b756a641a6e05
+kind: partial
+intent: 261013-f1-springboot-ci
+fingerprint: 2099a82b7f847867af32405392cb4661bfaa845d
 analyzed:
+  paths:
+    - ./.github/workflows/build-image.yml
+    - ./.github/workflows/build-and-test.yml
+    - ./pom.xml
+    - ./src/test/java/
+    - ./src/test/resources/application-test.properties
+  components:
+    - REST API Adapters
+    - User Clock Service
+    - Persistence Layer
+    - Infrastructure Configuration
+    - External Systems
+shallow:
   paths:
     - ./
     - ./pom.xml
@@ -33,22 +48,7 @@ analyzed:
     - ./.github/workflows/build-image.yml
     - ./.github/workflows/deploy-to-elastic-beanstalk.yml
     - ./.cursor/rules/habit-domain.mdc
-  components:
-    - REST API Adapters
-    - Authentication Services
-    - Security and JWT
-    - Habit Management Service
-    - Check-in Tracking Service
-    - Statistics Service
-    - User Clock Service
-    - Habit Icon Service
-    - Streak and Aggregate Service
-    - Persistence Layer
-    - Domain Entities
-    - Infrastructure Configuration
-    - External Systems
-shallow:
-  paths:
+    - ./src/main/
     - ./mvnw
     - ./mvnw.cmd
     - ./.mvn/wrapper/

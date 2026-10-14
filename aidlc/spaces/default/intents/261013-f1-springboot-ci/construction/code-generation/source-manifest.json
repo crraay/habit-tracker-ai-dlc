@@ -1,0 +1,9 @@
+{
+  "stage": "code-generation",
+  "version": 1,
+  "writes": [
+    { "repo": "habit-tracker-springboot", "path": ".github/workflows/build-image.yml" },
+    { "repo": "habit-tracker-springboot", "path": ".github/workflows/deploy-to-elastic-beanstalk.yml" },
+    { "repo": "habit-tracker-springboot", "path": "Dockerfile" }
+  ]
+}
